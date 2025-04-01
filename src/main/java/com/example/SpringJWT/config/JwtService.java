@@ -1,67 +1,55 @@
 package com.example.SpringJWT.config;
 
-import io.jsonwebtoken.Claims;
-import io.jsonwebtoken.Jwts;
-import io.jsonwebtoken.SignatureAlgorithm;
-import io.jsonwebtoken.io.Decoders;
-import io.jsonwebtoken.security.Keys;
-import org.springframework.security.core.userdetails.User;
-import org.springframework.security.core.userdetails.UserDetails;
-import org.springframework.stereotype.Service;
+import com.nimbusds.jwt.JWTClaimsSet;
+import com.nimbusds.jwt.SignedJWT;
+import com.nimbusds.jose.util.Base64URL;
+import com.nimbusds.jose.JWSObject;
+import com.nimbusds.jose.crypto.MACVerifier;
 
-import java.security.Key;
+import java.nio.charset.StandardCharsets;
+import java.text.ParseException;
 import java.util.Date;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.Objects;
-import java.util.function.Function;
 
-@Service
 public class JwtService {
 
-    private static final String SECRET_KEY="EkuQP/7IdpbP4ewZHqlx8Z0dXy2STPG2upYfA6YIPw+YahHmjFIOAVNtTFR0fAoP";
+    private static final String SECRET_KEY = "your-secret-key";
 
-    public String extractUsername(String token){
-        return extractClaims(token,Claims::getSubject);
-
-    }
-    public <T> T extractClaims(String token, Function<Claims,T> claimsResolver){
-        final Claims claims = extractAllClaims(token);
-        return claimsResolver.apply(claims);
-    }
-    public String generateToken(UserDetails userDetails){
-        return generateToken(new HashMap<>(),userDetails);
-    }
-    public String generateToken(Map<String, Object> extractClaims, UserDetails userDetails){
-        return Jwts.builder().setClaims(extractClaims)
-                .setSubject(userDetails.getUsername())
-                .setIssuedAt(new Date(System.currentTimeMillis()))
-                .setExpiration((new Date(System.currentTimeMillis()+1000*60*24)))
-                .signWith(getSignInKey(), SignatureAlgorithm.HS256).compact();
-
+    // Replace with your actual secret key
+    public byte[] getSecretKey() {
+        return SECRET_KEY.getBytes(StandardCharsets.UTF_8);
     }
 
-    public boolean isTokenValid(String token, UserDetails userDetails){
-        final String username= extractUsername(token);
-        return (username.equals(userDetails.getUsername())) && !isTokenExpired(token);
+    // Method to parse the JWT token and extract claims
+    public JWTClaimsSet extractClaims(String token) throws ParseException {
+        // Parse the JWT token
+        SignedJWT signedJWT = SignedJWT.parse(token);
+
+        // Verify the signature (using the secret key)
+        MACVerifier verifier = new MACVerifier(SECRET_KEY);
+        if (signedJWT.verify(verifier)) {
+            // Extract and return the claims
+            return signedJWT.getJWTClaimsSet();
+        } else {
+            throw new SecurityException("Invalid JWT signature");
+        }
     }
 
-    private boolean isTokenExpired(String token) {
-        return extractExpiration(token).before(new Date());
+    // Method to extract a specific claim from the JWT
+    public String extractUsername(String token) throws ParseException {
+        JWTClaimsSet claims = extractClaims(token);
+        return claims.getSubject();  // This is usually the "username"
     }
 
-    private Date extractExpiration(String token) {
-        return extractClaims(token,Claims::getExpiration);
+    // Method to check if the JWT has expired
+    public boolean isTokenExpired(String token) throws ParseException {
+        JWTClaimsSet claims = extractClaims(token);
+        Date expiration = claims.getExpirationTime();
+        return expiration.before(new Date());  // Check if current time is after expiration time
     }
 
-    private Claims extractAllClaims(String token){
-        return Jwts.parser().setSigningKey(getSignInKey())
-                .build().parseClaimsJws(token).getBody();
-    }
-
-    private Key getSignInKey() {
-        byte[] keyBytes = Decoders.BASE64.decode(SECRET_KEY);
-
-        return Keys.hmacShaKeyFor(keyBytes);
+    // Example method to validate a token
+    public boolean isTokenValid(String token, String username) throws ParseException {
+        String extractedUsername = extractUsername(token);
+        return extractedUsername.equals(username) && !isTokenExpired(token);
     }
 }
